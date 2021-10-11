@@ -1,0 +1,9 @@
+---
+# See full syntax at https://docs.onica.com/projects/runway
+deployments:
+  - modules:
+      - path: bootstrap.cfn
+      - path: vpc.tf
+      - path: img-mgr.tf
+    regions:
+      - us-east-1
