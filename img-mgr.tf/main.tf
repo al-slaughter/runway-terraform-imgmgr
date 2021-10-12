@@ -27,7 +27,7 @@ provider "aws" {
 module "asg" {
   source = "terraform-aws-modules/autoscaling/aws"
 
-  name                      = "day49_asg"
+  name                      = "${terraform.workspace}_${var.project_day}_asg"
   min_size                  = 1
   max_size                  = 1
   desired_capacity          = 1
@@ -35,11 +35,11 @@ module "asg" {
   health_check_type         = "EC2"
   vpc_zone_identifier       = "${data.terraform_remote_state.vpc.outputs.private_subnets}"
   # vpc_zone_identifier       = module.vpc.private_subnets
-  load_balancers            = [aws_elb.day49_lb.id]
+  load_balancers            = [aws_elb.lb.id]
 
   # Launch configuration
-  lc_name                = "day49-launch-template"
-  description            = "Assignment day 49"
+  lc_name                = "${terraform.workspace}-${var.project_day}-launch-template"
+  description            = "Assignment ${var.project_day}"
   update_default_version = true
 
   use_lc    = true
@@ -47,18 +47,18 @@ module "asg" {
 
   image_id                    = "ami-087c17d1fe0178315"
   instance_type               = "t3.micro"
-  key_name                    = aws_key_pair.day49_key.key_name
+  key_name                    = aws_key_pair.key.key_name
   associate_public_ip_address = false
-  iam_instance_profile_name   = aws_iam_instance_profile.day49_profile.id
-  security_groups             = [aws_security_group.day49_srv_sg.id]
-  user_data                   = templatefile("${path.module}/setup.sh", {BUCKET_NAME = aws_s3_bucket.day49_bucket.id})
+  iam_instance_profile_name   = aws_iam_instance_profile.profile.id
+  security_groups             = [aws_security_group.srv_sg.id]
+  user_data                   = templatefile("${path.module}/setup.sh", {BUCKET_NAME = "aws_s3_bucket.bucket.id"})
 }
 module "cdn" {
   source = "terraform-aws-modules/cloudfront/aws"
 
   origin = {
-    day49-lb-cdn = {
-      domain_name          = aws_elb.day49_lb.dns_name
+    "${terraform.workspace}-${var.project_day}-lb-cdn" = {
+      domain_name          = aws_elb.lb.dns_name
       custom_origin_config = {
         http_port              = 80
         https_port             = 443
@@ -71,7 +71,7 @@ module "cdn" {
     cloudfront_default_certificate = true
   }
   default_cache_behavior = {
-    target_origin_id       = "day49-lb-cdn"
+    target_origin_id       = "${terraform.workspace}-${var.project_day}-lb-cdn"
     viewer_protocol_policy = "redirect-to-https"
 
     allowed_methods = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH","DELETE"]
@@ -81,8 +81,8 @@ module "cdn" {
 }
 # Data and resources
 ## Permissions
-resource "aws_security_group" "day49_lb_sg" {
-  name        = "day49_lb_sg"
+resource "aws_security_group" "lb_sg" {
+  name        = "${terraform.workspace}_${var.project_day}_lb_sg"
   vpc_id      = "${data.terraform_remote_state.vpc.outputs.vpc_id}"  #module.vpc.vpc_id
 
   ingress {
@@ -102,13 +102,13 @@ resource "aws_security_group" "day49_lb_sg" {
     }
 }
 
-resource "aws_security_group" "day49_srv_sg" {
-  name        = "day49_srv_sg"
+resource "aws_security_group" "srv_sg" {
+  name        = "${terraform.workspace}_${var.project_day}_srv_sg"
   vpc_id      = "${data.terraform_remote_state.vpc.outputs.vpc_id}"
 
   ingress {
       description      = "Internet to http"
-      security_groups  = [aws_security_group.day49_lb_sg.id]
+      security_groups  = [aws_security_group.lb_sg.id]
       from_port        = 80
       to_port          = 80
       protocol         = "tcp"
@@ -124,18 +124,18 @@ resource "aws_security_group" "day49_srv_sg" {
 }
 
 # Step1: Create IAM Instance Profile
-resource "aws_iam_instance_profile" "day49_profile" {
-    name = "day49-profile"
-    role = aws_iam_role.day49_role.id
+resource "aws_iam_instance_profile" "profile" {
+    name = "${terraform.workspace}-${var.project_day}-profile"
+    role = aws_iam_role.role.id
 }
 # Step2: Create IAM Role
-resource "aws_iam_role" "day49_role" {
-    name               = "day49-role"
+resource "aws_iam_role" "role" {
+    name               = "${terraform.workspace}-${var.project_day}-role"
     path               = "/"
-    assume_role_policy = data.aws_iam_policy_document.day49_ec2_assume_role_doc.json
+    assume_role_policy = data.aws_iam_policy_document.ec2_assume_role_doc.json
 }
 # Step3: Create IAM Policy Documents
-data "aws_iam_policy_document" "day49_ec2_assume_role_doc" {
+data "aws_iam_policy_document" "ec2_assume_role_doc" {
   statement{
     actions       = ["sts:AssumeRole"]
     effect        = "Allow"
@@ -145,7 +145,7 @@ data "aws_iam_policy_document" "day49_ec2_assume_role_doc" {
     }
   }
 }
-data "aws_iam_policy_document" "day49_s3_doc"{
+data "aws_iam_policy_document" "s3_doc"{
   statement {
     actions = [
       "s3:GetObject",
@@ -153,7 +153,7 @@ data "aws_iam_policy_document" "day49_s3_doc"{
       "s3:DeleteObject"
     ]
     resources = [
-        "${aws_s3_bucket.day49_bucket.arn}/*"
+        "${aws_s3_bucket.bucket.arn}/*"
     ]
   }
   statement {
@@ -161,11 +161,11 @@ data "aws_iam_policy_document" "day49_s3_doc"{
       "s3:ListBucket"
     ]
     resources = [
-      aws_s3_bucket.day49_bucket.arn
+      "${aws_s3_bucket.bucket.arn}"
     ]
   }
 }
-data "aws_iam_policy_document" "day49_ec2desctags_doc" {
+data "aws_iam_policy_document" "ec2desctags_doc" {
   statement {
     actions = [
       "ec2:DescribeTags"
@@ -176,33 +176,33 @@ data "aws_iam_policy_document" "day49_ec2desctags_doc" {
   }
 }
 # Step4: Create IAM Policy
-resource "aws_iam_policy" "day49_s3_rw" {
-    name   = "day49-s3-all"
-    policy = data.aws_iam_policy_document.day49_s3_doc.json
+resource "aws_iam_policy" "s3_rw" {
+    name   = "${terraform.workspace}-${var.project_day}-s3-all"
+    policy = data.aws_iam_policy_document.s3_doc.json
 }
-resource "aws_iam_policy" "day49_ec2desctags_all" {
-    name   = "day49-ec2desctags-all"
-    policy = data.aws_iam_policy_document.day49_ec2desctags_doc.json
+resource "aws_iam_policy" "ec2desctags_all" {
+    name   = "${terraform.workspace}-${var.project_day}-ec2desctags-all"
+    policy = data.aws_iam_policy_document.ec2desctags_doc.json
 }
 # Step5: Attach IAM Policies to Role
-resource "aws_iam_role_policy_attachment" "day49_ssm" {
-  role       = aws_iam_role.day49_role.name
+resource "aws_iam_role_policy_attachment" "ssm" {
+  role       = aws_iam_role.role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
 }
-resource "aws_iam_role_policy_attachment" "day49_s3_rw" {
-    role       = aws_iam_role.day49_role.name
-    policy_arn = aws_iam_policy.day49_s3_rw.arn
+resource "aws_iam_role_policy_attachment" "s3_rw" {
+    role       = aws_iam_role.role.name
+    policy_arn = aws_iam_policy.s3_rw.arn
 }
-resource "aws_iam_role_policy_attachment" "day49_ec2desctags" {
-    role       = aws_iam_role.day49_role.name
-    policy_arn = aws_iam_policy.day49_ec2desctags_all.arn
+resource "aws_iam_role_policy_attachment" "ec2desctags" {
+    role       = aws_iam_role.role.name
+    policy_arn = aws_iam_policy.ec2desctags_all.arn
 }
 
 ## Devices
-resource "aws_elb" "day49_lb" {
-    name            = "day-49-lb"
+resource "aws_elb" "lb" {
+    name            = "${terraform.workspace}-${var.project_day}-lb"
     subnets         = "${data.terraform_remote_state.vpc.outputs.public_subnets}"   #module.vpc.public_subnets
-    security_groups = [aws_security_group.day49_lb_sg.id]
+    security_groups = [aws_security_group.lb_sg.id]
     listener {
       instance_port     = 80
       instance_protocol = "http"
@@ -218,12 +218,12 @@ resource "aws_elb" "day49_lb" {
     }
 }
 
-resource "aws_s3_bucket" "day49_bucket" {
-  bucket = "day49-top-bucket"
+resource "aws_s3_bucket" "bucket" {
+  bucket_prefix = "${terraform.workspace}-${var.project_day}-"
   acl    = "private"
 }
 
-resource "aws_key_pair" "day49_key" {
-    key_name   = "day49key"
-    public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC61X0A1dzci/UHW6uzkLSsdEPdpK1l7UnD3589mJq5uOuHfNtI6wUGSqj/Vgj7aXAImzNvmr7p+dsLstzkqT9zmY7bQh5vLxSr71Swq6MnOqvo7LbZHj/ynekgACRXbEmKx0JV2oZGowxon91/ESds9BGELGxOLsiSGXFk5QMij2xIln4FrpISEZjeSOeO+Q4cPR21s7/LP384V6+3/OTfrfDLI/fS91UWUuyvbD+YXvKVKayjqMRZYbabBmgCeLf3Le+TsPf7RX1IFyK6se0P3zLov52GQFSuVrUnY57nREuG7Qulv3Wn+hIQWvadKzFqT9S8wj/G7Qju6QlaWOLx"
+resource "aws_key_pair" "key" {
+    key_name   = "${terraform.workspace}-${var.project_day}key"
+    public_key = "${file("~/.ssh/test.id_rsa.pub")}"
 }
